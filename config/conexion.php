@@ -3,7 +3,7 @@
 $DB_HOST = '127.0.0.1';
 $DB_NAME = 'barberia_db';
 $DB_USER = 'root';
-$DB_PASS = ''; // cambia si usas contraseña
+$DB_PASS = ''; // deja vacío si XAMPP no tiene contraseña
 
 try {
     $pdo = new PDO("mysql:host=$DB_HOST;dbname=$DB_NAME;charset=utf8mb4", $DB_USER, $DB_PASS, [

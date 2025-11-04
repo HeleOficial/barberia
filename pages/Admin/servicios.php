@@ -6,6 +6,8 @@ require_role('admin');
 require_once __DIR__ . '/../../config/conexion.php';
 
 $msg = null;
+
+// Crear nuevo servicio
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_servicio'])) {
     $nombre = trim($_POST['nombre'] ?? '');
     $desc = trim($_POST['descripcion'] ?? '');
@@ -18,6 +20,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_servicio'])) {
         $msg = "✅ Servicio creado correctamente.";
     } else {
         $msg = "⚠️ El nombre del servicio es obligatorio.";
+    }
+}
+
+// Eliminar servicio
+if (isset($_GET['delete'])) {
+    $id = (int)$_GET['delete'];
+    $del = $pdo->prepare("DELETE FROM servicios WHERE id = :id");
+    $del->execute([':id' => $id]);
+    $msg = "🗑️ Servicio eliminado correctamente.";
+    header("Location: servicios.php");
+    exit;
+}
+
+// Actualizar servicio
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_servicio'])) {
+    $id = (int)$_POST['id'];
+    $nombre = trim($_POST['nombre']);
+    $desc = trim($_POST['descripcion']);
+    $dur = (int)$_POST['duracion'];
+    $precio = (float)$_POST['precio'];
+
+    if ($nombre) {
+        $upd = $pdo->prepare("UPDATE servicios SET nombre=:n, descripcion=:d, duracion_min=:dur, precio=:p WHERE id=:id");
+        $upd->execute([':n'=>$nombre, ':d'=>$desc, ':dur'=>$dur, ':p'=>$precio, ':id'=>$id]);
+        $msg = "✏️ Servicio actualizado correctamente.";
+    } else {
+        $msg = "⚠️ El nombre no puede estar vacío.";
     }
 }
 
@@ -78,18 +107,26 @@ include __DIR__ . '/../../includes/header.php';
             <th>Duración</th>
             <th>Precio</th>
             <th>Descripción</th>
+            <th>Acciones</th>
           </tr>
         </thead>
         <tbody>
           <?php if (empty($servicios)): ?>
-            <tr><td colspan="4" class="text-muted">No hay servicios registrados aún.</td></tr>
+            <tr><td colspan="5" class="text-muted">No hay servicios registrados aún.</td></tr>
           <?php else: ?>
             <?php foreach ($servicios as $s): ?>
               <tr>
-                <td><?= htmlspecialchars($s['nombre']) ?></td>
-                <td><?= htmlspecialchars($s['duracion_min']) ?> min</td>
-                <td>$<?= number_format($s['precio'], 0, ',', '.') ?></td>
-                <td><?= htmlspecialchars($s['descripcion']) ?></td>
+                <form method="post">
+                  <input type="hidden" name="id" value="<?= $s['id'] ?>">
+                  <td><input name="nombre" class="form-control text-center" value="<?= htmlspecialchars($s['nombre']) ?>" required></td>
+                  <td><input name="duracion" type="number" class="form-control text-center" value="<?= htmlspecialchars($s['duracion_min']) ?>"></td>
+                  <td><input name="precio" type="number" class="form-control text-center" value="<?= htmlspecialchars($s['precio']) ?>"></td>
+                  <td><input name="descripcion" class="form-control text-center" value="<?= htmlspecialchars($s['descripcion']) ?>"></td>
+                  <td class="d-flex justify-content-center gap-2">
+                    <button type="submit" name="edit_servicio" class="btn btn-sm btn-success">💾 Guardar</button>
+                    <a href="?delete=<?= $s['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar este servicio?')">🗑️ Eliminar</a>
+                  </td>
+                </form>
               </tr>
             <?php endforeach; ?>
           <?php endif; ?>
