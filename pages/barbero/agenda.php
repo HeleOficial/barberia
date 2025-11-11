@@ -1,5 +1,4 @@
 <?php
-// pages/barbero/agenda.php
 require_once __DIR__ . '/../../includes/auth.php';
 require_login();
 require_role('barbero');
@@ -8,7 +7,7 @@ require_once __DIR__ . '/../../config/conexion.php';
 // Obtener el ID del barbero logueado
 $barbero_id = $_SESSION['user_id'];
 
-// Consultar las citas asignadas a este barbero
+// Consultar citas del barbero
 $stmt = $pdo->prepare("
     SELECT c.*, 
            u.nombre AS cliente, 
@@ -31,9 +30,7 @@ include __DIR__ . '/../../includes/header.php';
   </h3>
 
   <?php if (empty($citas)): ?>
-    <div class="alert alert-info text-center">
-      No tienes citas agendadas.
-    </div>
+    <div class="alert alert-info text-center">No tienes citas agendadas.</div>
   <?php else: ?>
     <div class="card shadow-lg border-0">
       <div class="card-header bg-dark text-warning fw-bold">
@@ -53,34 +50,40 @@ include __DIR__ . '/../../includes/header.php';
           </thead>
           <tbody>
             <?php foreach ($citas as $c): ?>
+              <?php
+                $estado = strtolower($c['estado']);
+                $clase = match($estado) {
+                  'confirmada' => 'bg-success',
+                  'pendiente' => 'bg-warning',
+                  'rechazada', 'cancelada' => 'bg-danger',
+                  'reprogramada' => 'bg-secondary',
+                  'atendida' => 'bg-primary',
+                  'no_asistio' => 'bg-dark',
+                  default => 'bg-light text-dark'
+                };
+              ?>
               <tr>
                 <td><?= htmlspecialchars($c['fecha']) ?></td>
                 <td><?= htmlspecialchars($c['hora']) ?></td>
                 <td><?= htmlspecialchars($c['cliente']) ?></td>
                 <td><?= htmlspecialchars($c['servicio']) ?></td>
                 <td>
-                  <?php
-                    $estado = strtolower($c['estado']);
-                    $clase = match($estado) {
-                      'confirmada' => 'bg-success',
-                      'pendiente' => 'bg-warning',
-                      'rechazada', 'cancelada' => 'bg-danger',
-                      'reprogramada' => 'bg-secondary',
-                      default => 'bg-light text-dark'
-                    };
-                  ?>
                   <span class="badge <?= $clase ?>">
-                    <?= htmlspecialchars(ucfirst($c['estado'])) ?>
+                    <?= htmlspecialchars(ucfirst(str_replace('_', ' ', $c['estado']))) ?>
                   </span>
                 </td>
                 <td>
                   <?php if (in_array($estado, ['pendiente', 'reprogramada'])): ?>
-                    <form class="accion-cita-form d-inline" method="post" action="accion_cita.php">
-                      <input type="hidden" name="cita_id" value="<?= htmlspecialchars($c['id']) ?>">
-                      <button type="submit" name="accion" value="aceptar" class="btn btn-success btn-sm">Aceptar</button>
-                      <button type="submit" name="accion" value="rechazar" class="btn btn-danger btn-sm">Rechazar</button>
-                      <button type="submit" name="accion" value="posponer" class="btn btn-primary btn-sm">Posponer</button>
-                    </form>
+                    <div class="d-flex justify-content-center gap-2">
+                      <button class="btn btn-success btn-sm" onclick="accionCita(<?= $c['id'] ?>, 'aceptar')">Aceptar</button>
+                      <button class="btn btn-danger btn-sm" onclick="accionCita(<?= $c['id'] ?>, 'rechazar')">Rechazar</button>
+                      <button class="btn btn-primary btn-sm" onclick="abrirModalPosponer(<?= $c['id'] ?>)">Posponer</button>
+                    </div>
+                  <?php elseif ($estado === 'confirmada'): ?>
+                    <div class="d-flex justify-content-center gap-2">
+                      <button class="btn btn-primary btn-sm" onclick="accionCita(<?= $c['id'] ?>, 'atendida')">Atendida</button>
+                      <button class="btn btn-dark btn-sm" onclick="accionCita(<?= $c['id'] ?>, 'no_asistio')">No asistió</button>
+                    </div>
                   <?php else: ?>
                     <span class="text-muted">Sin acciones</span>
                   <?php endif; ?>
@@ -94,17 +97,75 @@ include __DIR__ . '/../../includes/header.php';
   <?php endif; ?>
 </div>
 
+<!-- 🔹 MODAL PARA POSPONER CITA -->
+<div class="modal fade" id="modalPosponer" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title"><i class="bi bi-calendar-plus"></i> Reprogramar cita</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="formPosponer">
+          <input type="hidden" name="cita_id" id="cita_id_modal">
+
+          <div class="mb-3">
+            <label for="nueva_fecha" class="form-label">Nueva fecha</label>
+            <input type="date" class="form-control" id="nueva_fecha" name="nueva_fecha" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="nueva_hora" class="form-label">Nueva hora</label>
+            <input type="time" class="form-control" id="nueva_hora" name="nueva_hora" required>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-warning" id="btnGuardarPosponer">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-// Captura los formularios de acción (Aceptar, Rechazar, Posponer)
-document.querySelectorAll('.accion-cita-form').forEach(form => {
-  form.addEventListener('submit', async e => {
-    e.preventDefault();
-    const data = new FormData(form);
-    const resp = await fetch(form.action, { method: 'POST', body: data });
+async function accionCita(id, accion) {
+  const data = new FormData();
+  data.append('cita_id', id);
+  data.append('accion', accion);
+
+  try {
+    const resp = await fetch('accion_cita.php', { method: 'POST', body: data });
     const result = await resp.json();
     alert(result.msg);
     if (result.status === 'ok') location.reload();
-  });
+  } catch (error) {
+    console.error(error);
+    alert("❌ Error al procesar la acción.");
+  }
+}
+
+// 🔹 Abrir modal de posponer
+function abrirModalPosponer(id) {
+  document.getElementById('cita_id_modal').value = id;
+  const modal = new bootstrap.Modal(document.getElementById('modalPosponer'));
+  modal.show();
+}
+
+// 🔹 Guardar posposición
+document.getElementById('btnGuardarPosponer').addEventListener('click', async () => {
+  const form = document.getElementById('formPosponer');
+  const data = new FormData(form);
+  data.append('accion', 'posponer');
+
+  try {
+    const resp = await fetch('accion_cita.php', { method: 'POST', body: data });
+    const result = await resp.json();
+    alert(result.msg);
+    if (result.status === 'ok') location.reload();
+  } catch (error) {
+    alert("❌ Error al reprogramar la cita.");
+  }
 });
 </script>
 

@@ -127,36 +127,59 @@ include __DIR__ . '/../../includes/header.php';
     </form>
 
     <hr>
-    <div id="calendario"></div>
+    <h5><i class="bi bi-clock-history"></i> Horarios ocupados:</h5>
+    <table id="tabla-ocupados" class="table table-bordered text-center mt-2">
+      <thead class="table-dark">
+        <tr><th>Fecha</th><th>Hora</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
   </div>
 </div>
 
 <script>
 document.getElementById('barbero_id').addEventListener('change', async function() {
   const id = this.value;
-  const calendario = document.getElementById('calendario');
-  calendario.innerHTML = "";
+  const tabla = document.querySelector('#tabla-ocupados tbody');
+  const horaInput = document.getElementById('hora');
+
+  tabla.innerHTML = "";
+  horaInput.value = "";
+  horaInput.disabled = false;
 
   if (!id) return;
 
   const res = await fetch('get_disponibilidad.php?barbero_id=' + id);
   const data = await res.json();
 
-  if (!Array.isArray(data) || data.length === 0) {
-    calendario.innerHTML = "<div class='alert alert-success'>El barbero no tiene citas ocupadas.</div>";
+  if (!data || !Array.isArray(data.ocupadas)) {
+    tabla.innerHTML = `<tr><td colspan="2" class="text-muted">No hay datos disponibles</td></tr>`;
     return;
   }
 
-  let html = "<h5>🕓 Horarios ocupados:</h5>";
-  html += "<table class='table table-sm table-bordered text-center'>";
-  html += "<thead class='table-dark'><tr><th>Fecha</th><th>Hora</th></tr></thead><tbody>";
+  // 🔹 Mostrar citas ocupadas
+  if (data.ocupadas.length === 0) {
+    tabla.innerHTML = `<tr><td colspan="2" class="text-success">El barbero no tiene citas ocupadas</td></tr>`;
+  } else {
+    data.ocupadas.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${c.fecha}</td><td class="text-danger fw-bold">${c.hora}</td>`;
+      tabla.appendChild(tr);
+    });
+  }
 
-  data.forEach(c => {
-    html += `<tr><td>${c.fecha}</td><td class="text-danger fw-bold">${c.hora}</td></tr>`;
+  // 🔹 Bloquear horas ocupadas del input (solo si coincide fecha)
+  document.getElementById('fecha').addEventListener('change', () => {
+    const fechaSeleccionada = document.getElementById('fecha').value;
+    const ocupadas = data.ocupadas.filter(c => c.fecha === fechaSeleccionada).map(c => c.hora);
+
+    horaInput.addEventListener('input', () => {
+      if (ocupadas.includes(horaInput.value)) {
+        alert("⚠️ Esa hora ya está ocupada. Por favor, elige otra.");
+        horaInput.value = "";
+      }
+    });
   });
-
-  html += "</tbody></table>";
-  calendario.innerHTML = html;
 });
 </script>
 
